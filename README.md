@@ -32,7 +32,7 @@ pip install aiogram openai langchain faiss-cpu
 pip install -r requirements.txt
 
 ### Конфигурация
-Создайте файл `config.py`:
+`config.py`:
 
 bot_token = "ВАШ_ТОКЕН_TELEGRAM"
 key = "ВАШ_КЛЮЧ_OPENAI"

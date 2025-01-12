@@ -108,3 +108,7 @@ if __name__ == '__main__':
         asyncio.run(main())
     except (KeyboardInterrupt, SystemExit):
         logging.info('Бот остановлен')
+    finally:
+        # Закрываем соединения
+        asyncio.run(bot.session.close())
+        logging.info('Соединения закрыты')

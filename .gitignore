@@ -1,0 +1,39 @@
+.env                # Файл с секретными ключами
+.venv/              # Виртуальное окружение Python
+venv/               # Альтернативные названия виртуальных окружений
+env/
+ENV/
+
+__pycache__/        # Директория с байт-кодом
+*.py[cod]           # Скомпилированные файлы Python
+*$py.class          # Служебные файлы
+
+*.log               # Все log-файлы
+bot_logs.log        # Конкретные log-файлы
+vineyard_assistant.log
+
+.idea/              # PyCharm
+.vscode/            # VS Code
+*.swp               # Временные файлы редакторов
+*.swo
+.DS_Store           # Служебные файлы macOS
+
+data/faiss_index/   # Локальные индексы
+data/temp/          # Временные данные
+*.index             # Файлы индексов
+
+config.local.py     # Локальные конфигурации
+
+*.pkl               # Сериализованные модели
+*.model
+*.h5                # Веса нейросетей
+*.pt
+
+*.pyc               # Скомпилированный Python
+*.pyo
+*.pyd
+
+.ipynb_checkpoints  # Jupyter
+*.tmp               # Временные файлы
+*.bak
+*.backup

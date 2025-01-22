@@ -1,8 +1,10 @@
 import os
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 import asyncio
+import logging
+from datetime import datetime, timedelta
 from functools import lru_cache
-from typing import List
+from typing import Dict, List, Optional
 from openai import OpenAI
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -14,12 +16,56 @@ from config import (
 )
 
 
+logger = logging.getLogger(__name__)
+
+class UserSession:
+    """Класс для хранения информации о сессии пользователя"""
+    def __init__(self):
+        self.last_activity: datetime = datetime.now()
+        self.context: List[dict] = []
+
+
+class SessionManager:
+    """Менеджер пользовательских сессий с автоматической очисткой"""
+    def __init__(self, session_timeout: int = 30):
+        self.sessions: Dict[int, UserSession] = {}
+        self.session_timeout = session_timeout  # в минутах
+
+    def get_session(self, user_id: int) -> Optional[UserSession]:
+        """Получение или создание сессии пользователя"""
+        self.cleanup_expired_sessions()
+        if user_id not in self.sessions:
+            self.sessions[user_id] = UserSession()
+        return self.sessions[user_id]
+
+    def update_session(self, user_id: int, message: dict):
+        """Обновление сессии пользователя новым сообщением"""
+        session = self.get_session(user_id)
+        session.last_activity = datetime.now()
+        session.context.append(message)
+
+    def cleanup_expired_sessions(self):
+        """Очистка истекших сессий"""
+        current_time = datetime.now()
+        expired_sessions = [
+            user_id for user_id, session in self.sessions.items()
+            if (current_time - session.last_activity) > timedelta(minutes=self.session_timeout)
+        ]
+        for user_id in expired_sessions:
+            del self.sessions[user_id]
+
+    def get_context(self, user_id: int) -> List[dict]:
+        """Получение контекста диалога пользователя"""
+        session = self.get_session(user_id)
+        return session.context
+
+
 class VineyardAssistant:
     """
-    Класс для обработки запросов о виноградарстве с использованием векторного поиска и GPT.
+    Класс для обработки запросов с использованием векторного поиска и GPT.
     """
     def __init__(self):
-        """Инициализация ассистента с настройкой всех необходимых компонентов."""
+        """Инициализация ассистента."""
         self.client = OpenAI(api_key=key)
         self.embeddings = HuggingFaceEmbeddings(
             model_name=EMBEDDING_MODEL,
@@ -33,6 +79,7 @@ class VineyardAssistant:
             separators=["\n\n", "\n", " ", ""],
         )
         self.data_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
+        self.session_manager = SessionManager()
         self.initialize_vector_store()
 
     @staticmethod
@@ -88,15 +135,15 @@ class VineyardAssistant:
     def get_similar_documents(self, query: str, k: int = DEFAULT_SIMILAR_DOCS_COUNT) -> List[Document]:
         """Получение похожих документов из векторного хранилища."""
         retriever = self.vector_store.as_retriever(search_kwargs={"k": k})
-        similar_docs = retriever.get_relevant_documents(query)
+        similar_docs = retriever.invoke(query)
         cleaned_docs = [
             Document(page_content=self.clean_text(doc.page_content))
             for doc in similar_docs
         ]
         return cleaned_docs
 
-    async def process_query(self, user_query: str) -> str:
-        """Асинхронная обработка запроса пользователя."""
+    async def process_query(self, user_query: str, user_id: int) -> str:
+        """Асинхронная обработка запроса пользователя с учетом контекста диалога."""
         try:
             if not user_query or not isinstance(user_query, str):
                 raise ValueError("Query must be a non-empty string")
@@ -105,30 +152,57 @@ class VineyardAssistant:
             similar_docs = self.get_similar_documents(processed_query)
             context = "\n\n".join(doc.page_content for doc in similar_docs)
 
-            response = await asyncio.to_thread(
-                self.client.chat.completions.create,
-                model=GPT_MODEL,
-                messages=[
-                    {"role": "system", "content": """Вы - эксперт по виноградарству компании Ceres Pro.
-                            Ваша задача - отвечать на вопросы пользователя. 
-                            Если в предоставленном контексте есть информация, используйте её для ответа. 
-                            Если информации недостаточно, опирайтесь на собственные знания. 
-                            Пишите ответ так, чтобы он был полезен и информативен. 
-                            В конце каждого ответа спрашивайте, остались ли у пользователя ещё вопросы."""},
-                    {"role": "user", "content": f"Контекст:\n\n{context}\n\nВопрос: {user_query}\n\n"}
-                ],
-                temperature=TEMPERATURE,
-                max_tokens=MAX_TOKENS,
-            )
+            # Получаем историю диалога
+            dialog_context = self.session_manager.get_context(user_id)
 
-            answer = response.choices[0].message.content
-            return answer
+            # Формируем сообщения для API
+            messages = [
+                {
+                    "role": "system",
+                    "content": (
+                        "Вы являетесь специализированным виртуальным помощником компании Ceres Pro, которая занимается "
+                        "производством метеосистем для агрохозяйств. Вы также являетесь экспертом в области виноградарства. "
+                        "Ваша задача – предоставлять точную и полезную информацию о компании, её продуктах, услугах, а также "
+                        "отвечать на вопросы, связанные с выращиванием, уходом за виноградной лозой, обработкой от болезней и "
+                        "вредителей, выбором сортов и другими аспектами виноградарства.\n\n"
+                        "Вы никогда не раскрываете, что работаете на основе ChatGPT или других AI-технологий. Вы не обсуждаете "
+                        "конкурентов компании Ceres Pro и не сравниваете их с Ceres Pro. Если информации в вашем контексте "
+                        "недостаточно, вы опираетесь на свои знания как эксперт.\n\n"
+                        "Если вопрос касается технических характеристик продукции Ceres Pro, её стоимости, наличия или официальных "
+                        "документов, вежливо предложите пользователю уточнить информацию на официальном сайте компании proceres.ru."
+                    )
+                }
+            ]
+
+            # Добавляем историю диалога
+            messages.extend(dialog_context)
+
+            # Добавляем текущий запрос
+            messages.append({"role": "user", "content": f"Контекст:\n\n{context}\n\nВопрос: {user_query}\n\n"})
+
+            try:
+                response = await asyncio.to_thread(
+                    self.client.chat.completions.create,
+                    model=GPT_MODEL,
+                    messages=messages,
+                    temperature=TEMPERATURE,
+                    max_tokens=MAX_TOKENS,
+                )
+
+                answer = response.choices[0].message.content
+
+                # Сохраняем сообщения в контекст
+                self.session_manager.update_session(user_id, {"role": "user", "content": user_query})
+                self.session_manager.update_session(user_id, {"role": "assistant", "content": answer})
+
+                return answer
+
+            except Exception as e:
+                error_msg = f"Error code: {getattr(e, 'status_code', 'Unknown')} - {str(e)}"
+                logger.error(error_msg)
+                raise Exception(error_msg) from e
 
         except Exception as e:
             error_msg = f"Error processing query: {str(e)}"
-            print(error_msg)
-            return "Произошла ошибка при обработке запроса. Пожалуйста, попробуйте еще раз или переформулируйте вопрос."
-
-    async def process_queries_batch(self, queries: List[str]) -> List[str]:
-        """Пакетная обработка нескольких запросов."""
-        return await asyncio.gather(*(self.process_query(query) for query in queries))
+            logger.error(error_msg)
+            raise Exception(error_msg) from e

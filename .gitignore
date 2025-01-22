@@ -1,39 +1,51 @@
-.env                # Файл с секретными ключами
-.venv/              # Виртуальное окружение Python
-venv/               # Альтернативные названия виртуальных окружений
+# Environments
+.env
+.venv/
+venv/
 env/
 ENV/
 
-__pycache__/        # Директория с байт-кодом
-*.py[cod]           # Скомпилированные файлы Python
-*$py.class          # Служебные файлы
+# Python cache files
+__pycache__/
+*.py[cod]
+*$py.class
 
-*.log               # Все log-файлы
-bot_logs.log        # Конкретные log-файлы
+# Log files
+*.log
+bot_logs.log
 vineyard_assistant.log
 
-.idea/              # PyCharm
-.vscode/            # VS Code
-*.swp               # Временные файлы редакторов
+# IDE specific files
+.idea/
+.vscode/
+*.swp
 *.swo
-.DS_Store           # Служебные файлы macOS
+.DS_Store
 
-data/faiss_index/   # Локальные индексы
-data/temp/          # Временные данные
-*.index             # Файлы индексов
+# Data and index files
+#data/faiss_index/
+#data/temp/
+#*.index
 
-config.local.py     # Локальные конфигурации
+# Sensitive or local configuration
+config.local.py
 
-*.pkl               # Сериализованные модели
+# Machine learning and large binary files
+*.pkl
 *.model
-*.h5                # Веса нейросетей
+*.h5
 *.pt
 
-*.pyc               # Скомпилированный Python
+# Compiled files
+*.pyc
 *.pyo
 *.pyd
 
-.ipynb_checkpoints  # Jupyter
-*.tmp               # Временные файлы
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# Temporary files
+*.tmp
 *.bak
 *.backup
+EOL
